@@ -1,4 +1,4 @@
-# # main.py
+# # main.py sequential classification
 # import os
 # import pandas as pd
 # from src.sequential_classification import (
@@ -72,11 +72,11 @@
 #     print("\n====================== Summary ======================")
 #     print("Completed classifiers:", ", ".join(completed))
 
-# if _name_ == "_main_":
+# if __name__ == "_main_":
 #     main()
+##---------------------------------------------------------------------------------------------------------------
 
-
-# # main.py
+# # main.py sequential clustering
 # import pandas as pd
 # from src.sequential_clustering import (
 #     dtw_kmeans_clustering,
@@ -130,12 +130,12 @@
 #     else:
 #         print("Skipping Autoencoder Clustering: TensorFlow/Keras not available")
 
-# if _name_ == "_main_":
+# if __name__ == "_main_":
 #     main()
+##---------------------------------------------------------------------------------------------------------------------------------
 
 
-
-# #main.py
+# #main.py spatial classification
 # # main.py
 # import pandas as pd
 # from src.spatial_classification import (
@@ -167,9 +167,12 @@
 #     print("\n================ Logistic Regression ===============")
 #     logistic_regression_classification(df.copy(), features)
 
-# if _name_ == "_main_":
+# if __name__ == "_main_":
 #     main()
-# # main.py
+##-----------------------------------------------------------------------------------------------------------------------------------------------
+
+
+# # main.py spatial_clustering
 # import pandas as pd
 # from src.spatial_clustering import (
 #     dbscan_clustering,
@@ -219,3 +222,6 @@
 
 # if _name_ == "_main_":
 #     main()
+
+
+##----------------------------------------------------------------------------------------------------------------------------------------------------
