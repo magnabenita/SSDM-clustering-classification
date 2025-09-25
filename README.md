@@ -172,8 +172,8 @@ pip install -r requirements.txt
 
 ## Authors
 
-* [Your Name / Team]
-* [University / Organization]
+* Magna Benita .P
+* [VIT University]
 
 ---
 
@@ -183,9 +183,3 @@ This project is licensed under [MIT License](LICENSE).
 
 ```
 
----
-
-If you want, I can also **rewrite `main.py` into a single modular version with sections for sequential classification, sequential clustering, spatial classification, and spatial clustering**, so your README commands match exactly.  
-
-Do you want me to do that next?
-```
