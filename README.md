@@ -1,10 +1,9 @@
 
-```markdown
+
 # Earthquake Data Analysis: Classification & Clustering
 
 This project performs **earthquake data analysis** using both **sequential** and **spatial** approaches, combining classical ML, deep learning, and time-series clustering methods.
 
----
 
 ## Project Structure
 
