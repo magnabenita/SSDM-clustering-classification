@@ -4,8 +4,14 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+
 from sklearn.metrics import (
-    calinski_harabasz_score, davies_bouldin_score, fowlkes_mallows_score, v_measure_score
+    confusion_matrix,
+    accuracy_score,
+    f1_score,
+    precision_score,
+    recall_score,
+    balanced_accuracy_score,
 )
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
@@ -17,152 +23,226 @@ import folium
 RESULTS_DIR = "results/spatial_classification"
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
+
 # -------------------- Helpers --------------------
 def save_metrics(metrics, model_name):
     path = os.path.join(RESULTS_DIR, f"{model_name}_metrics.csv")
-    df = pd.DataFrame([metrics])
-    df.to_csv(path, index=False)
+    pd.DataFrame([metrics]).to_csv(path, index=False)
+
 
 def save_predictions(df, model_name):
     path = os.path.join(RESULTS_DIR, f"{model_name}_predictions.csv")
     df.to_csv(path, index=False)
 
+
+def _build_legend_html(class_labels, colors):
+    # returns small HTML block to add to folium map with legend entries
+    html = """
+    <div style="
+      position: fixed;
+      bottom: 50px;
+      left: 50px;
+      width: 160px;
+      max-height: 300px;
+      overflow:auto;
+      padding:8px;
+      background-color: white;
+      border:2px solid grey;
+      z-index:9999;
+      font-size:14px;
+    ">
+    &nbsp;<b>Legend</b><br>
+    """
+    for i, c in enumerate(class_labels):
+        color = colors[i % len(colors)]
+        html += f"&nbsp;<i style='background:{color};width:10px;height:10px;display:inline-block;margin-right:6px'></i>Class {c}<br>"
+    html += "</div>"
+    return html
+
+
 def plot_map(df, lat_col="latitude", lon_col="longitude", class_col="predicted", model_name="model"):
-    m = folium.Map(location=[df[lat_col].mean(), df[lon_col].mean()], zoom_start=5)
-    colors = ["blue", "red", "green", "orange", "purple"]
-    class_labels = sorted(df[class_col].unique())
+    """Save a folium map showing predicted classes (uses df rows provided)."""
+    if df.empty:
+        return
+    center = [float(df[lat_col].mean()), float(df[lon_col].mean())]
+    m = folium.Map(location=center, zoom_start=5)
+    colors = ["blue", "red", "green", "orange", "purple", "darkred", "cadetblue", "darkgreen"]
+
+    class_labels = sorted(pd.Series(df[class_col]).unique())
 
     for _, row in df.iterrows():
-        color = colors[int(row[class_col]) % len(colors)]
+        try:
+            color = colors[int(row[class_col]) % len(colors)]
+        except Exception:
+            color = colors[0]
         folium.CircleMarker(
-            location=[row[lat_col], row[lon_col]],
+            location=[float(row[lat_col]), float(row[lon_col])],
             radius=4,
             color=color,
             fill=True,
-            fill_opacity=0.6
+            fill_opacity=0.7,
         ).add_to(m)
 
-    # Add legend
-    legend_html = """
-     <div style="
-     position: fixed;
-     bottom: 50px;
-     left: 50px;
-     width: 120px;
-     height: {}px;
-     background-color: white;
-     border:2px solid grey;
-     z-index:9999;
-     font-size:14px;
-     ">
-     &nbsp;<b>Legend</b><br>
-    """.format(30 * len(class_labels) + 10)
-
-    for i, c in enumerate(class_labels):
-        legend_html += f"&nbsp;<i style='background:{colors[i % len(colors)]};width:10px;height:10px;display:inline-block'></i>&nbsp;Class {c}<br>"
-    legend_html += "</div>"
-
+    # add legend
+    legend_html = _build_legend_html(class_labels, colors)
     m.get_root().html.add_child(folium.Element(legend_html))
+
     map_path = os.path.join(RESULTS_DIR, f"{model_name}_map.html")
     m.save(map_path)
 
-def evaluate_clustering(X, labels, y_true=None):
+
+# -------------------- Evaluation Function --------------------
+def evaluate_classification(y_true, y_pred):
     metrics = {}
-    if len(np.unique(labels)) > 1:
-        metrics["calinski_harabasz"] = calinski_harabasz_score(X, labels)
-        metrics["davies_bouldin"] = davies_bouldin_score(X, labels)
-    else:
-        metrics["calinski_harabasz"] = np.nan
-        metrics["davies_bouldin"] = np.nan
-    if y_true is not None and len(np.unique(labels)) > 1:
-        metrics["fowlkes_mallows"] = fowlkes_mallows_score(y_true, labels)
-        metrics["v_measure"] = v_measure_score(y_true, labels)
-    else:
-        metrics["fowlkes_mallows"] = np.nan
-        metrics["v_measure"] = np.nan
+    
+    # Confusion Matrix
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    
+    # Core Metrics
+    accuracy = accuracy_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred, zero_division=0)
+    recall = recall_score(y_true, y_pred, zero_division=0)  # Sensitivity
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+    f1 = f1_score(y_true, y_pred, zero_division=0)
+    
+    # Extended Metrics
+    npv = tn / (tn + fn) if (tn + fn) > 0 else 0
+    fdr = fp / (tp + fp) if (tp + fp) > 0 else 0
+    _for = fn / (fn + tn) if (fn + tn) > 0 else 0  # False Omission Rate
+    fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
+    fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+    plr = (recall / (1 - specificity)) if (1 - specificity) > 0 else float("inf")
+    nlr = ((1 - recall) / specificity) if specificity > 0 else float("inf")
+    prevalence = (tp + fn) / (tp + tn + fp + fn)
+    balanced_acc = (recall + specificity) / 2
+
+    # Save in dictionary
+    metrics = {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall_sensitivity": recall,
+        "specificity": specificity,
+        "f1_score": f1,
+        "npv": npv,
+        "fdr": fdr,
+        "for": _for,
+        "fnr": fnr,
+        "fpr": fpr,
+        "plr": plr,
+        "nlr": nlr,
+        "prevalence": prevalence,
+        "balanced_accuracy": balanced_acc
+    }
+    
     return metrics
 
-def rasterize_earthquakes(df, grid_size=(50,50), features=["magnitude", "depth"]):
-    """Convert earthquake points into a raster grid."""
-    lat_min, lat_max = df["latitude"].min(), df["latitude"].max()
-    lon_min, lon_max = df["longitude"].min(), df["longitude"].max()
-    
-    raster = np.zeros((grid_size[0], grid_size[1], len(features)))
-    
-    for i, feat in enumerate(features):
-        vals = df[feat].fillna(0).values
-        lat_idx = np.floor((df["latitude"] - lat_min) / (lat_max - lat_min) * (grid_size[0]-1)).astype(int)
-        lon_idx = np.floor((df["longitude"] - lon_min) / (lon_max - lon_min) * (grid_size[1]-1)).astype(int)
-        for y, x, v in zip(lat_idx, lon_idx, vals):
-            raster[y, x, i] += v  # sum values in same cell
-    return raster, (lat_min, lat_max, lon_min, lon_max)
-# -------------------- Classifiers --------------------
-def knn_classification(df, features, target="class", n_neighbors=5):
+# -------------------- Classifiers (all use train/test) --------------------
+def knn_classification(df, features, target="class", n_neighbors=5, test_size=0.2, random_state=42):
     X = df[features].values
     y = df[target].values
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    
-    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size, random_state=random_state)
     model = KNeighborsClassifier(n_neighbors=n_neighbors)
     model.fit(X_train, y_train)
-    y_pred = model.predict(X_scaled)
-    
-    df["predicted"] = y_pred
-    metrics = evaluate_clustering(X_scaled, y_pred, y_true=y)
-    save_predictions(df, "knn")
+    y_pred = model.predict(X_test)
+
+    # create test dataframe with predictions and original lat/lon if available
+    df_test = df.iloc[y_test.index].copy() if hasattr(y_test, "index") else df.iloc[X_test.shape[0]*[0]].copy()
+    df_test = df_test.reset_index(drop=True)
+    df_test["predicted"] = y_pred
+
+    metrics = evaluate_classification(y_test, y_pred)
+    save_predictions(df_test, "knn")
     save_metrics(metrics, "knn")
-    plot_map(df, class_col="predicted", model_name="knn")
-    return df, metrics
+    plot_map(df_test, class_col="predicted", model_name="knn")
+    return df_test, metrics
 
-def decision_tree_classification(df, features, target="class"):
+
+def decision_tree_classification(df, features, target="class", test_size=0.2, random_state=42):
     X = df[features].values
     y = df[target].values
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_scaled, y)
-    y_pred = model.predict(X_scaled)
-    
-    df["predicted"] = y_pred
-    metrics = evaluate_clustering(X_scaled, y_pred, y_true=y)
-    save_predictions(df, "random_forest")
+
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size, random_state=random_state)
+    model = DecisionTreeClassifier(random_state=random_state)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    df_test = df.iloc[y_test.index].copy() if hasattr(y_test, "index") else df.iloc[X_test.shape[0]*[0]].copy()
+    df_test = df_test.reset_index(drop=True)
+    df_test["predicted"] = y_pred
+
+    metrics = evaluate_classification(y_test, y_pred)
+    save_predictions(df_test, "decision_tree")
+    save_metrics(metrics, "decision_tree")
+    plot_map(df_test, class_col="predicted", model_name="decision_tree")
+    return df_test, metrics
+
+
+def random_forest_classification(df, features, target="class", test_size=0.2, random_state=42):
+    X = df[features].values
+    y = df[target].values
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size, random_state=random_state)
+    model = RandomForestClassifier(n_estimators=100, random_state=random_state)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    df_test = df.iloc[y_test.index].copy() if hasattr(y_test, "index") else df.iloc[X_test.shape[0]*[0]].copy()
+    df_test = df_test.reset_index(drop=True)
+    df_test["predicted"] = y_pred
+
+    metrics = evaluate_classification(y_test, y_pred)
+    save_predictions(df_test, "random_forest")
     save_metrics(metrics, "random_forest")
-    plot_map(df, class_col="predicted", model_name="random_forest")
-    return df, metrics
+    plot_map(df_test, class_col="predicted", model_name="random_forest")
+    return df_test, metrics
 
-def svm_classification(df, features, target="class"):
+
+def svm_classification(df, features, target="class", test_size=0.2, random_state=42):
     X = df[features].values
     y = df[target].values
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    
-    model = SVC(kernel="rbf", probability=True, random_state=42)
-    model.fit(X_scaled, y)
-    y_pred = model.predict(X_scaled)
-    
-    df["predicted"] = y_pred
-    metrics = evaluate_clustering(X_scaled, y_pred, y_true=y)
-    save_predictions(df, "svm")
+
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size, random_state=random_state)
+    model = SVC(kernel="rbf", probability=True, random_state=random_state)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    df_test = df.iloc[y_test.index].copy() if hasattr(y_test, "index") else df.iloc[X_test.shape[0]*[0]].copy()
+    df_test = df_test.reset_index(drop=True)
+    df_test["predicted"] = y_pred
+
+    metrics = evaluate_classification(y_test, y_pred)
+    save_predictions(df_test, "svm")
     save_metrics(metrics, "svm")
-    plot_map(df, class_col="predicted", model_name="svm")
-    return df, metrics
+    plot_map(df_test, class_col="predicted", model_name="svm")
+    return df_test, metrics
 
-def logistic_regression_classification(df, features, target="class"):
+
+def logistic_regression_classification(df, features, target="class", test_size=0.2, random_state=42):
     X = df[features].values
     y = df[target].values
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
-    
-    model = LogisticRegression(max_iter=200)
-    model.fit(X_scaled, y)
-    y_pred = model.predict(X_scaled)
-    
-    df["predicted"] = y_pred
-    metrics = evaluate_clustering(X_scaled, y_pred, y_true=y)
-    save_predictions(df, "logistic_regression")
-    save_metrics(metrics, "logistic_regression")
-    plot_map(df, class_col="predicted", model_name="logistic_regression")
-    return df, metrics
 
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=test_size, random_state=random_state)
+    model = LogisticRegression(max_iter=500, random_state=random_state)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    df_test = df.iloc[y_test.index].copy() if hasattr(y_test, "index") else df.iloc[X_test.shape[0]*[0]].copy()
+    df_test = df_test.reset_index(drop=True)
+    df_test["predicted"] = y_pred
+
+    metrics = evaluate_classification(y_test, y_pred)
+    save_predictions(df_test, "logistic_regression")
+    save_metrics(metrics, "logistic_regression")
+    plot_map(df_test, class_col="predicted", model_name="logistic_regression")
+    return df_test, metrics

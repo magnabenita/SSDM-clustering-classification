@@ -135,41 +135,59 @@
 ##---------------------------------------------------------------------------------------------------------------------------------
 
 
-# #main.py spatial classification
-# # main.py
-# import pandas as pd
-# from src.spatial_classification import (
-#     knn_classification,
-#     decision_tree_classification,
-#     svm_classification,
-#     logistic_regression_classification
-# )
+#main.py spatial classification
+# main.py
+# main.py
+import pandas as pd
+from src.spatial_classification import (
+    knn_classification,
+    decision_tree_classification,
+    random_forest_classification,
+    svm_classification,
+    logistic_regression_classification,
+)
 
-# def load_data(path="data/earthquakes_last30days.csv"):
-#     df = pd.read_csv(path)
-#     df = df.dropna(subset=["latitude", "longitude", "magnitude"])
-#     df["class"] = (df["magnitude"] >= 4.0).astype(int)  # 0 = minor, 1 = major
-#     return df
+DATA_PATH = "data/earthquakes_last30days.csv"
 
-# def main():
-#     df = load_data()
-#     features = ["latitude", "longitude", "magnitude", "depth"]
-    
-#     print("\n================ K-Nearest Neighbors ================")
-#     knn_classification(df.copy(), features)
-    
-#     print("\n================ Random Forest ======================")
-#     decision_tree_classification(df.copy(), features)
-    
-#     print("\n================ Support Vector Machine =============")
-#     svm_classification(df.copy(), features)
-    
-#     print("\n================ Logistic Regression ===============")
-#     logistic_regression_classification(df.copy(), features)
 
-# if __name__ == "_main_":
-#     main()
-##-----------------------------------------------------------------------------------------------------------------------------------------------
+def load_data(path=DATA_PATH):
+    df = pd.read_csv(path)
+    # Keep only rows where we have coordinates & magnitude
+    df = df.dropna(subset=["latitude", "longitude", "magnitude"]).reset_index(drop=True)
+    # Example binary class: magnitude >= 4.0 -> big quake
+    df["class"] = (df["magnitude"] >= 4.0).astype(int)
+    return df
+
+
+def main():
+    df = load_data()
+    features = ["latitude", "longitude", "magnitude", "depth"]
+
+    print("\n================ K-Nearest Neighbors ================")
+    df_knn, metrics_knn = knn_classification(df.copy(), features)
+    print("KNN metrics:", metrics_knn)
+
+    print("\n================ Decision Tree ======================")
+    df_dt, metrics_dt = decision_tree_classification(df.copy(), features)
+    print("Decision Tree metrics:", metrics_dt)
+
+    print("\n================ Random Forest ======================")
+    df_rf, metrics_rf = random_forest_classification(df.copy(), features)
+    print("Random Forest metrics:", metrics_rf)
+
+    print("\n================ Support Vector Machine ============")
+    df_svm, metrics_svm = svm_classification(df.copy(), features)
+    print("SVM metrics:", metrics_svm)
+
+    print("\n================ Logistic Regression ==============")
+    df_lr, metrics_lr = logistic_regression_classification(df.copy(), features)
+    print("Logistic Regression metrics:", metrics_lr)
+
+
+if __name__ == "__main__":
+    main()
+
+#-----------------------------------------------------------------------------------------------------------------------------------------------
 
 
 # # main.py spatial_clustering
