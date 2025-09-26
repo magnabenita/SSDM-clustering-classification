@@ -51,6 +51,12 @@ pip install -r requirements.txt
 
 ---
 
+**Loading Dataset**
+```bash
+python src/data_collector.py
+````
+
+
 ## Data Format
 
 The CSV dataset should include:
